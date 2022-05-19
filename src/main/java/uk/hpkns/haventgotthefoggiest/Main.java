@@ -6,63 +6,154 @@ import javafx.scene.Group;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.image.Image;
 import javafx.scene.paint.Color;
+import javafx.scene.text.Font;
+import javafx.scene.text.TextAlignment;
 import javafx.stage.Stage;
+
+import java.util.ArrayList;
+import java.util.Objects;
+import java.util.Random;
 
 public class Main extends Application {
 
-    public static final boolean DEBUG_FPS = false;
+    public static final Random RANDOM = new Random();
+    public static boolean DEBUG = false;
+    public static final double SCALE_FACTOR = 3d;
+    public static final long UPDATE_INTERVAL = 1000000000 / 60;
+
+    private double fps;
+    private ArrayList<String> input = new ArrayList<>();
+    private Runway runway;
 
     public static void main(String[] args) {
         launch();
     }
 
-    private long lastTick;
-
     @Override
-    public void start(Stage stage) throws Exception {
+    public void start(Stage stage) {
         Group root = new Group();
-        Scene scene = new Scene(root, 600, 400, Color.BLACK);
+        Scene scene = new Scene(root, 1280, 720, Color.BLACK);
 
         Canvas canvas = new Canvas();
         canvas.widthProperty().bind(scene.widthProperty());
         canvas.heightProperty().bind(scene.heightProperty());
 
         GraphicsContext gc = canvas.getGraphicsContext2D();
+        gc.scale(SCALE_FACTOR, SCALE_FACTOR);
 
-        lastTick = System.nanoTime();
+        final long[] lastTick = {System.nanoTime()};
+        final long[] timeSinceLastUpdate = {0};
+
+        runway = new Runway(RANDOM.nextInt(), ply);
+        runway.x = RANDOM.nextDouble() * 2000 - 1000;
+        runway.y = RANDOM.nextDouble() * 2000 - 1000;
+
         AnimationTimer timer = new AnimationTimer() {
             @Override
             public void handle(long time) {
-                long deltaNanos = time - lastTick;
-                lastTick = time;
+                long deltaNanos = time - lastTick[0];
+                lastTick[0] = time;
                 double delta = ((double) deltaNanos) / 1000000000.0f;
+                timeSinceLastUpdate[0] += deltaNanos;
 
                 gc.clearRect(0d, 0d, canvas.getWidth(), canvas.getHeight());
 
                 gc.setFill(Color.WHITE);
-                if (DEBUG_FPS) {
-                    double fps = 1f / delta;
-                    gc.fillText(String.format("FPS: %.1f", fps), 10d, 10d);
+                if (DEBUG) {
+                    fps = 1f / delta;
                 }
-                gameLoop(gc, delta, canvas.getWidth(), canvas.getHeight());
+                while (timeSinceLastUpdate[0] >= UPDATE_INTERVAL) {
+                    update(canvas.getWidth() / SCALE_FACTOR, canvas.getHeight() / SCALE_FACTOR);
+                    timeSinceLastUpdate[0] -= UPDATE_INTERVAL;
+                }
+                render(gc, canvas.getWidth() / SCALE_FACTOR, canvas.getHeight() / SCALE_FACTOR);
             }
         };
         timer.start();
 
+        scene.setOnKeyPressed(
+                e -> {
+                    String code = e.getCode().toString();
+
+                    if (Objects.equals(code, "F3"))
+                        DEBUG = !DEBUG;
+                    if (!input.contains(code))
+                        input.add(code);
+                });
+
+        scene.setOnKeyReleased(
+                e -> {
+                    String code = e.getCode().toString();
+                    input.remove( code );
+                });
+
         root.getChildren().add(canvas);
+        stage.setFullScreen(true);
         stage.setScene(scene);
         stage.show();
     }
 
-    private void gameLoop(GraphicsContext gc, double delta, double width, double height) {
+    private final Player ply = new Player();
+    private final double fogAmount = 0.8;
+    private double dmeNm;
+    private double dmeKt;
+    private double dmeMin;
+
+    private void update(double width, double height) {
+        ply.update(input);
+
+        // Calculate DME
+        dmeNm = Math.sqrt(Math.pow(runway.x - ply.x + width / 2, 2) + Math.pow(runway.y - ply.y + height / 2, 2)) / 500;
+
+        double plyToRwyAng = Math.PI / 2 - Math.atan((runway.y - ply.y) / (runway.x - ply.x));
+        dmeKt = Player.SPEED * Math.sin((plyToRwyAng - (ply.heading * Math.PI / 180) - Math.PI / 2));
+        dmeMin = dmeNm / Player.SPEED;
+    }
+
+    private final Image dme = new Image(Objects.requireNonNull(Main.class.getResource("/dme.png")).toExternalForm());
+    private final Image ground = new Image(Objects.requireNonNull(Main.class.getResource("/ground.png")).toExternalForm());
+    private final Font seg7 = Font.loadFont(Objects.requireNonNull(Main.class.getResourceAsStream("/Segment7Standard.otf")), 18);
+
+    private void render(GraphicsContext gc, double width, double height) {
+        gc.setImageSmoothing(false);
         // Render world background
+        double offsetX = ply.x % 128;
+        double offsetY = ply.y % 128;
+        for (double x = offsetX - 128; x < width; x += 127) {
+            for (double y = offsetY - 128; y < height; y += 127) {
+                gc.drawImage(ground, x, y);
+            }
+        }
+        runway.render(gc, width, height);
 
         // Render fog
+        gc.save();
+        gc.setFill(Color.gray(0.5, fogAmount));
+        gc.fillRect(0, 0, width, height);
+        gc.restore();
 
         // Render plane
+        ply.render(gc, width, height);
 
         // Render UI
+        double dmeLeft = width - 128 - 16;
+        double dmeTop = height - 64 - 16;
+        gc.drawImage(dme, dmeLeft, dmeTop);
+        gc.setFont(seg7);
+        gc.setFill(Color.rgb(254, 103, 0));
+        gc.setTextAlign(TextAlignment.RIGHT);
+        gc.fillText(String.format("%.1f", Math.min(dmeNm, 99.9)), dmeLeft + 47, dmeTop + 11 + gc.getFont().getSize());
+        gc.fillText(String.format("%.0f", Math.min(dmeKt, 99)), dmeLeft + 82, dmeTop + 11 + gc.getFont().getSize());
+        gc.fillText(String.format("%.0f", Math.min(dmeMin, 99)), dmeLeft + 111, dmeTop + 11 + gc.getFont().getSize());
 
+        if (DEBUG) {
+            gc.setTextAlign(TextAlignment.LEFT);
+            gc.fillText(String.format("FPS: %.1f", fps), 16d, 20d);
+            gc.fillText(String.format("PLY: (%04.02f, %04.02f)", ply.x, ply.y), 16d, 40d);
+            gc.fillText(String.format("RWY: (%04.02f, %04.02f)", runway.x, runway.y), 16d, 60d);
+            gc.fillText(String.format("DME: %.02f", dmeNm), 16d, 80d);
+        }
     }
 }
