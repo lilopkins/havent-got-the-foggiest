@@ -96,13 +96,21 @@ public class Main extends Application {
     }
 
     private final Player ply = new Player();
-    private final double fogAmount = 0.8;
+    private double fogAmount = 0.8;
+    private double fogVelocity = 0;
+    private double fogAcceleration = 0;
     private double dmeNm;
     private double dmeKt;
     private double dmeMin;
 
     private void update(double width, double height) {
         ply.update(input);
+
+        fogAcceleration = RANDOM.nextDouble() - 0.5d;
+        fogVelocity += fogAcceleration;
+        fogVelocity = Math.max(-1, Math.min(fogVelocity, 1d));
+        fogAmount += fogVelocity * 0.001d;
+        fogAmount = Math.max(0.8d, Math.min(fogAmount, 0.98d));
 
         // Calculate DME
         dmeNm = Math.sqrt(Math.pow(runway.x - ply.x + width / 2, 2) + Math.pow(runway.y - ply.y + height / 2, 2)) / 500;
@@ -154,6 +162,7 @@ public class Main extends Application {
             gc.fillText(String.format("PLY: (%04.02f, %04.02f)", ply.x, ply.y), 16d, 40d);
             gc.fillText(String.format("RWY: (%04.02f, %04.02f)", runway.x, runway.y), 16d, 60d);
             gc.fillText(String.format("DME: %.02f", dmeNm), 16d, 80d);
+            gc.fillText(String.format("FOG: %.02f", fogAmount), 16d, 100d);
         }
     }
 }
