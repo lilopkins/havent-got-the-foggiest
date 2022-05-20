@@ -2,10 +2,12 @@ package uk.hpkns.haventgotthefoggiest;
 
 import javafx.animation.AnimationTimer;
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.scene.Group;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
+import javafx.scene.control.Alert;
 import javafx.scene.image.Image;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
@@ -24,8 +26,9 @@ public class Main extends Application {
     public static final long UPDATE_INTERVAL = 1000000000 / 60;
 
     private double fps;
-    private ArrayList<String> input = new ArrayList<>();
+    private final ArrayList<String> input = new ArrayList<>();
     private Runway runway;
+    private AnimationTimer timer;
 
     public static void main(String[] args) {
         launch();
@@ -50,7 +53,7 @@ public class Main extends Application {
         runway.x = RANDOM.nextDouble() * 2000 - 1000;
         runway.y = RANDOM.nextDouble() * 2000 - 1000;
 
-        AnimationTimer timer = new AnimationTimer() {
+        timer = new AnimationTimer() {
             @Override
             public void handle(long time) {
                 long deltaNanos = time - lastTick[0];
@@ -96,9 +99,9 @@ public class Main extends Application {
     }
 
     private final Player ply = new Player();
+    private double fadeEntire = 1.0;
     private double fogAmount = 0.8;
     private double fogVelocity = 0;
-    private double fogAcceleration = 0;
     private double dmeNm;
     private double dmeKt;
     private double dmeMin;
@@ -106,17 +109,46 @@ public class Main extends Application {
     private void update(double width, double height) {
         ply.update(input);
 
-        fogAcceleration = RANDOM.nextDouble() - 0.5d;
+        double fogAcceleration = RANDOM.nextDouble() - 0.5d;
         fogVelocity += fogAcceleration;
         fogVelocity = Math.max(-1, Math.min(fogVelocity, 1d));
         fogAmount += fogVelocity * 0.001d;
         fogAmount = Math.max(0.8d, Math.min(fogAmount, 0.98d));
 
+        ply.fuel = Math.max(ply.fuel - 0.025, 0.0d);
+        if (ply.fuel <= 0.0d) {
+            fadeEntire = Math.min(fadeEntire + 0.002, 1.0d);
+            if (fadeEntire >= 1.0) {
+                timer.stop();
+                Platform.runLater(() -> {
+                    Alert alert = new Alert(Alert.AlertType.ERROR);
+                    alert.setTitle("You lost!");
+                    alert.setHeaderText("You lost!");
+                    alert.setContentText("You ran out of fuel and your plane crash landed!");
+                    alert.showAndWait();
+                    Platform.exit();
+                });
+            }
+        } else if (fadeEntire > 0.0d) {
+            fadeEntire = Math.max(0.0d, fadeEntire - 0.002);
+        }
+
         // Calculate DME
         dmeNm = Math.sqrt(Math.pow(runway.x - ply.x + width / 2, 2) + Math.pow(runway.y - ply.y + height / 2, 2)) / 500;
+        if (dmeNm < 0.5) {
+            Platform.runLater(() -> {
+                timer.stop();
+                Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
+                alert.setTitle("You won!");
+                alert.setHeaderText("You won!");
+                alert.showAndWait();
+                Platform.exit();
+            });
+        }
 
         double plyToRwyAng = Math.PI / 2 - Math.atan((runway.y - ply.y) / (runway.x - ply.x));
         dmeKt = Player.SPEED * Math.sin((plyToRwyAng - (ply.heading * Math.PI / 180) - Math.PI / 2));
+
         dmeMin = dmeNm / Player.SPEED;
     }
 
@@ -155,6 +187,12 @@ public class Main extends Application {
         gc.fillText(String.format("%.1f", Math.min(dmeNm, 99.9)), dmeLeft + 47, dmeTop + 11 + gc.getFont().getSize());
         gc.fillText(String.format("%.0f", Math.min(dmeKt, 99)), dmeLeft + 82, dmeTop + 11 + gc.getFont().getSize());
         gc.fillText(String.format("%.0f", Math.min(dmeMin, 99)), dmeLeft + 111, dmeTop + 11 + gc.getFont().getSize());
+        gc.fillText(String.format("FUEL: %.1f", ply.fuel), width - 16, dmeTop - 4);
+
+        gc.save();
+        gc.setFill(Color.gray(0.0d, fadeEntire));
+        gc.fillRect(0, 0, width, height);
+        gc.restore();
 
         if (DEBUG) {
             gc.setTextAlign(TextAlignment.LEFT);

@@ -17,6 +17,7 @@ public class Player implements Updatable, Renderable {
     public double y;
     public double heading;
     public int dHeading = 0;
+    public double fuel = 170.0d;
 
     public Player() {
         heading = 90;
