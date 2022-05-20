@@ -9,14 +9,19 @@ import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.Alert;
 import javafx.scene.image.Image;
+import javafx.scene.media.Media;
+import javafx.scene.media.MediaPlayer;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.TextAlignment;
 import javafx.stage.Stage;
+import javafx.util.Duration;
 
 import java.util.ArrayList;
 import java.util.Objects;
 import java.util.Random;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 
 public class Main extends Application {
 
@@ -29,6 +34,7 @@ public class Main extends Application {
     private final ArrayList<String> input = new ArrayList<>();
     private Runway runway;
     private AnimationTimer timer;
+    private boolean gameComplete;
 
     public static void main(String[] args) {
         launch();
@@ -38,6 +44,40 @@ public class Main extends Application {
     public void start(Stage stage) {
         Group root = new Group();
         Scene scene = new Scene(root, 1280, 720, Color.BLACK);
+
+        Platform.runLater(() -> {
+            ThreadPoolExecutor tpe = (ThreadPoolExecutor) Executors.newFixedThreadPool(8);
+            Media engStart = new Media(Objects.requireNonNull(Main.class.getResource("/eng_start.wav")).toExternalForm());
+            Media engIdle = new Media(Objects.requireNonNull(Main.class.getResource("/eng_idle.wav")).toExternalForm());
+            final MediaPlayer[] mediaPlayer = {new MediaPlayer(engStart), new MediaPlayer(engIdle), new MediaPlayer(engIdle)};
+            mediaPlayer[0].setVolume(1.0d);
+            mediaPlayer[0].play();
+            mediaPlayer[0].setOnEndOfMedia(() -> mediaPlayer[1].play());
+            mediaPlayer[1].setOnPlaying(() -> tpe.execute(() -> {
+                try {
+                    Thread.sleep((long) engIdle.getDuration().subtract(Duration.millis(300)).toMillis());
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                if (gameComplete)
+                    return;
+                mediaPlayer[2].play();
+                mediaPlayer[1].stop();
+                mediaPlayer[1].seek(Duration.ZERO);
+            }));
+            mediaPlayer[2].setOnPlaying(() -> tpe.execute(() -> {
+                try {
+                    Thread.sleep((long) engIdle.getDuration().subtract(Duration.millis(300)).toMillis());
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+                if (gameComplete)
+                    return;
+                mediaPlayer[1].play();
+                mediaPlayer[2].stop();
+                mediaPlayer[2].seek(Duration.ZERO);
+            }));
+        });
 
         Canvas canvas = new Canvas();
         canvas.widthProperty().bind(scene.widthProperty());
@@ -125,6 +165,7 @@ public class Main extends Application {
             fadeEntire = Math.min(fadeEntire + 0.002, 1.0d);
             if (fadeEntire >= 1.0) {
                 timer.stop();
+                gameComplete = true;
                 Platform.runLater(() -> {
                     Alert alert = new Alert(Alert.AlertType.ERROR);
                     alert.setTitle("You lost!");
@@ -135,7 +176,7 @@ public class Main extends Application {
                 });
             }
         } else if (fadeEntire > 0.0d) {
-            fadeEntire = Math.max(0.0d, fadeEntire - 0.002);
+            fadeEntire = Math.max(0.0d, fadeEntire - 0.0015);
             initialStory = fadeEntire;
         }
 
@@ -144,6 +185,7 @@ public class Main extends Application {
         if (dmeNm < 0.05) {
             Platform.runLater(() -> {
                 timer.stop();
+                gameComplete = true;
                 Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
                 alert.setTitle("You won!");
                 alert.setHeaderText("You won!");
@@ -199,7 +241,7 @@ public class Main extends Application {
         gc.save();
         gc.setFill(Color.gray(0.0d, fadeEntire));
         gc.fillRect(0, 0, width, height);
-        gc.setFill(Color.gray(1.0d, fadeEntire));
+        gc.setFill(Color.gray(1.0d, initialStory));
         gc.setTextAlign(TextAlignment.CENTER);
         gc.setFont(roboto);
         gc.fillText("You're flying...\nBut suddenly it gets foggy beneath you...\nWill you find a runway in time?", width / 2, height / 2);
