@@ -50,8 +50,12 @@ public class Main extends Application {
         final long[] timeSinceLastUpdate = {0};
 
         runway = new Runway(RANDOM.nextInt(), ply);
-        runway.x = RANDOM.nextDouble() * 2000 - 1000;
-        runway.y = RANDOM.nextDouble() * 2000 - 1000;
+        while (Math.abs(runway.x) < 100.d) {
+            runway.x = RANDOM.nextDouble() * 2000 - 1000;
+        }
+        while (Math.abs(runway.y) < 100.d) {
+            runway.y = RANDOM.nextDouble() * 2000 - 1000;
+        }
 
         timer = new AnimationTimer() {
             @Override
@@ -100,6 +104,7 @@ public class Main extends Application {
 
     private final Player ply = new Player();
     private double fadeEntire = 1.0;
+    private double initialStory = 1.0;
     private double fogAmount = 0.8;
     private double fogVelocity = 0;
     private double dmeNm;
@@ -131,11 +136,12 @@ public class Main extends Application {
             }
         } else if (fadeEntire > 0.0d) {
             fadeEntire = Math.max(0.0d, fadeEntire - 0.002);
+            initialStory = fadeEntire;
         }
 
         // Calculate DME
         dmeNm = Math.sqrt(Math.pow(runway.x - ply.x + width / 2, 2) + Math.pow(runway.y - ply.y + height / 2, 2)) / 500;
-        if (dmeNm < 0.5) {
+        if (dmeNm < 0.05) {
             Platform.runLater(() -> {
                 timer.stop();
                 Alert alert = new Alert(Alert.AlertType.CONFIRMATION);
@@ -155,6 +161,7 @@ public class Main extends Application {
     private final Image dme = new Image(Objects.requireNonNull(Main.class.getResource("/dme.png")).toExternalForm());
     private final Image ground = new Image(Objects.requireNonNull(Main.class.getResource("/ground.png")).toExternalForm());
     private final Font seg7 = Font.loadFont(Objects.requireNonNull(Main.class.getResourceAsStream("/Segment7Standard.otf")), 18);
+    private final Font roboto = Font.loadFont(Objects.requireNonNull(Main.class.getResourceAsStream("/Roboto-Light.ttf")), 18);
 
     private void render(GraphicsContext gc, double width, double height) {
         gc.setImageSmoothing(false);
@@ -192,6 +199,10 @@ public class Main extends Application {
         gc.save();
         gc.setFill(Color.gray(0.0d, fadeEntire));
         gc.fillRect(0, 0, width, height);
+        gc.setFill(Color.gray(1.0d, fadeEntire));
+        gc.setTextAlign(TextAlignment.CENTER);
+        gc.setFont(roboto);
+        gc.fillText("You're flying...\nBut suddenly it gets foggy beneath you...\nWill you find a runway in time?", width / 2, height / 2);
         gc.restore();
 
         if (DEBUG) {
